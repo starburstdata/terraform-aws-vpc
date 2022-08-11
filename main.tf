@@ -5,16 +5,29 @@ locals {
     length(var.database_subnets),
     length(var.redshift_subnets),
     length(local.private_custom_subnets),
+    length(local.public_custom_subnets),
   )
   nat_gateway_count = var.single_nat_gateway ? 1 : var.one_nat_gateway_per_az ? length(toset(flatten([
     var.azs,
     local.private_custom_subnets[*].azs,
+    local.public_custom_subnets[*].azs,
   ]))) : local.max_subnet_length
 
   # Use `local.vpc_id` to give a hint to Terraform that subnets should be deleted before secondary CIDR blocks can be free!
   vpc_id = try(aws_vpc_ipv4_cidr_block_association.this[0].vpc_id, aws_vpc.this[0].id, "")
 
   create_vpc = var.create_vpc && var.putin_khuylo
+
+  public_custom_subnets = flatten([
+  for block in var.public_custom_blocks : [
+  for subnet in block.subnets : {
+    subnet        = subnet
+    azs           = block.azs
+    subnet_suffix = block.subnet_suffix
+    tags          = block.tags
+      }
+    ]
+  ])
 
   private_custom_subnets = flatten([
     for block in var.private_custom_blocks : [
@@ -419,7 +432,7 @@ resource "aws_subnet" "private" {
 # Custom private subnet
 ################################################################################
 
-resource "aws_subnet" "custom" {
+resource "aws_subnet" "private_custom" {
   count = var.create_vpc && length(local.private_custom_subnets) > 0 ? length(local.private_custom_subnets) : 0
 
   vpc_id     = local.vpc_id
@@ -437,6 +450,31 @@ resource "aws_subnet" "custom" {
     },
     var.tags,
     local.private_custom_subnets[count.index].tags,
+  )
+}
+
+################################################################################
+# Custom public subnet
+################################################################################
+
+resource "aws_subnet" "public_custom" {
+  count = var.create_vpc && length(local.public_custom_subnets) > 0 ? length(local.public_custom_subnets) : 0
+
+  vpc_id     = local.vpc_id
+  cidr_block = local.public_custom_subnets[count.index].subnet
+
+  availability_zone    = length(regexall("^[a-z]{2}-", element(local.public_custom_subnets[count.index].azs, count.index))) > 0 ? element(local.public_custom_subnets[count.index].azs, count.index) : null
+  availability_zone_id = length(regexall("^[a-z]{2}-", element(local.public_custom_subnets[count.index].azs, count.index))) == 0 ? element(local.public_custom_subnets[count.index].azs, count.index) : null
+
+  tags = merge(
+    {
+      "Name" = format(
+        "${var.name}-${local.public_custom_subnets[count.index].subnet_suffix}-%s",
+        element(local.public_custom_subnets[count.index].azs, count.index),
+      )
+    },
+    var.tags,
+    local.public_custom_subnets[count.index].tags,
   )
 }
 
@@ -1063,7 +1101,7 @@ resource "aws_nat_gateway" "this" {
     var.single_nat_gateway ? 0 : count.index,
   )
   subnet_id = element(
-    aws_subnet.public[*].id,
+    concat(aws_subnet.public[*].id, aws_subnet.public_custom[*].id),
     var.single_nat_gateway ? 0 : count.index,
   )
 
@@ -1118,7 +1156,17 @@ resource "aws_route_table_association" "private" {
 resource "aws_route_table_association" "custom_private" {
   count = var.create_vpc && length(local.private_custom_subnets) > 0 ? length(local.private_custom_subnets) : 0
 
-  subnet_id = element(aws_subnet.custom[*].id, count.index)
+  subnet_id = element(aws_subnet.private_custom[*].id, count.index)
+  route_table_id = element(
+    aws_route_table.private[*].id,
+    var.single_nat_gateway ? 0 : count.index,
+  )
+}
+
+resource "aws_route_table_association" "custom_publc" {
+  count = var.create_vpc && length(local.private_custom_subnets) > 0 ? length(local.private_custom_subnets) : 0
+
+  subnet_id = element(aws_subnet.public_custom[*].id, count.index)
   route_table_id = element(
     aws_route_table.private[*].id,
     var.single_nat_gateway ? 0 : count.index,
