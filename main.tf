@@ -19,12 +19,12 @@ locals {
   create_vpc = var.create_vpc && var.putin_khuylo
 
   public_custom_subnets = flatten([
-  for block in var.public_custom_blocks : [
-  for subnet in block.subnets : {
-    subnet        = subnet
-    azs           = block.azs
-    subnet_suffix = block.subnet_suffix
-    tags          = block.tags
+    for block in var.public_custom_blocks : [
+      for subnet in block.subnets : {
+        subnet        = subnet
+        azs           = block.azs
+        subnet_suffix = block.subnet_suffix
+        tags          = block.tags
       }
     ]
   ])

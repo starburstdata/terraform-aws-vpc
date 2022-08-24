@@ -544,3 +544,22 @@ output "name" {
   description = "The name of the VPC specified as argument to this module"
   value       = var.name
 }
+
+# Custom blocks output
+output "private_subnet_custom_blocks" {
+  value = [for index, subnet in aws_subnet.private_custom[*].id : {
+    id : subnet,
+    cidr : element(aws_subnet.private_custom, index).cidr_block,
+    Name : lookup(element(aws_subnet.private_custom, index).tags, "Name", ""),
+    arn : element(aws_subnet.private_custom, index).arn,
+  }]
+}
+
+output "public_subnet_custom_blocks" {
+  value = [for index, subnet in aws_subnet.public_custom[*].id : {
+    id : subnet,
+    cidr : element(aws_subnet.public_custom, index).cidr_block,
+    Name : lookup(element(aws_subnet.public_custom, index).tags, "Name", ""),
+    arn : element(aws_subnet.public_custom, index).arn,
+  }]
+}
