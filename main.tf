@@ -157,6 +157,18 @@ resource "aws_internet_gateway" "this" {
   )
 }
 
+resource "aws_internet_gateway" "this_custom" {
+  count = local.create_vpc && var.create_igw && length(local.public_custom_subnets) > 0 ? 1 : 0
+
+  vpc_id = local.vpc_id
+
+  tags = merge(
+    { "Name" = var.name },
+    var.tags,
+    var.igw_tags,
+  )
+}
+
 resource "aws_egress_only_internet_gateway" "this" {
   count = local.create_vpc && var.create_egress_only_igw && var.enable_ipv6 && local.max_subnet_length > 0 ? 1 : 0
 
@@ -226,12 +238,36 @@ resource "aws_route_table" "public" {
   )
 }
 
+resource "aws_route_table" "public_custom" {
+  count = local.create_vpc && length(local.public_custom_subnets) > 0 ? 1 : 0
+
+  vpc_id = local.vpc_id
+
+  tags = merge(
+    { "Name" = "${var.name}-${var.public_subnet_suffix}" },
+    var.tags,
+    var.public_route_table_tags,
+  )
+}
+
 resource "aws_route" "public_internet_gateway" {
   count = local.create_vpc && var.create_igw && length(var.public_subnets) > 0 ? 1 : 0
 
   route_table_id         = aws_route_table.public[0].id
   destination_cidr_block = "0.0.0.0/0"
   gateway_id             = aws_internet_gateway.this[0].id
+
+  timeouts {
+    create = "5m"
+  }
+}
+
+resource "aws_route" "public_custom_internet_gateway" {
+  count = local.create_vpc && var.create_igw && length(local.public_custom_subnets) > 0 ? 1 : 0
+
+  route_table_id         = aws_route_table.public_custom[0].id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.this_custom[0].id
 
   timeouts {
     create = "5m"
@@ -1163,16 +1199,6 @@ resource "aws_route_table_association" "custom_private" {
   )
 }
 
-resource "aws_route_table_association" "custom_publc" {
-  count = var.create_vpc && length(local.private_custom_subnets) > 0 ? length(local.private_custom_subnets) : 0
-
-  subnet_id = element(aws_subnet.public_custom[*].id, count.index)
-  route_table_id = element(
-    aws_route_table.private[*].id,
-    var.single_nat_gateway ? 0 : count.index,
-  )
-}
-
 resource "aws_route_table_association" "outpost" {
   count = local.create_vpc && length(var.outpost_subnets) > 0 ? length(var.outpost_subnets) : 0
 
@@ -1238,6 +1264,13 @@ resource "aws_route_table_association" "public" {
 
   subnet_id      = element(aws_subnet.public[*].id, count.index)
   route_table_id = aws_route_table.public[0].id
+}
+
+resource "aws_route_table_association" "public_custom" {
+  count = local.create_vpc && length(local.public_custom_subnets) > 0 ? length(local.public_custom_subnets) : 0
+
+  subnet_id      = element(aws_subnet.public_custom[*].id, count.index)
+  route_table_id = aws_route_table.public_custom[0].id
 }
 
 ################################################################################

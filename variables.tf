@@ -1195,12 +1195,12 @@ variable "putin_khuylo" {
 
 variable "public_custom_blocks" {
   type        = map(any)
-  description = "List of maps of customized public subnets"
+  description = "(Optional) map of customized public subnets"
   default     = {}
 }
 
 variable "private_custom_blocks" {
   type        = map(any)
-  description = "List of maps of customized private subnets"
+  description = "(Optional) map of customized private subnets"
   default     = {}
 }
